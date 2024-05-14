@@ -80,18 +80,6 @@ func NewModel() Model {
 				Options(huh.NewOptions("Start coding", "Test solution", "View stats", "Configure settings", "About Codex", "Exit")...).
 				Title("What would you like to do today?").
 				Description("Choose an operation please"),
-
-			huh.NewConfirm().
-				Key("done").
-				Title("All done?").
-				Validate(func(v bool) error {
-					if !v {
-						return fmt.Errorf("welp, finish up then")
-					}
-					return nil
-				}).
-				Affirmative("Yep").
-				Negative("Wait, no"),
 		),
 	).
 		WithWidth(45).
