@@ -10,34 +10,35 @@ import (
 )
 
 func codingMenu() *huh.Form {
-	problemTypes := huh.NewOptions(
-		"Arrays & Hashing",
-		"Two Pointers",
-		"Stack",
-		"Binary Search",
-		"Sliding Window",
-		"Linked List",
-		"Trees",
-		"Tries",
-		"Backtracking",
-		"Heap & Priority Queue",
-		"Graphs",
-		"1-D DP",
-		"Intervals",
-		"Greedy",
-		"Advanced Graphs",
-		"2-D DP",
-		"Bit Manipulation",
-		"Math & Geometry",
-	)
-	return huh.NewForm(
-		huh.NewGroup(
+	category := "categories"
+	arr := []*huh.Group{}
+
+	topicGroup := huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("What topic would you like to practice?").
+			Value(&category).
+			Options(
+				huh.NewOptions(topicList...)...,
+			),
+	).WithHideFunc(func() bool { return category != "categories" })
+
+	arr = append(arr, topicGroup)
+
+	for key, list := range problemLists {
+		newGroup := huh.NewGroup(
 			huh.NewSelect[string]().
-				Key("problemType").
-				Options(problemTypes...).
-				Title("What would you like to do today?").
-				Description("Choose an topic to practice please"),
-		),
+				Title("What problem would you like to practice?").
+				Value(&category).
+				Options(
+					huh.NewOptions(list...)...,
+				),
+		).WithHideFunc(func() bool { return category != key })
+
+		arr = append(arr, newGroup)
+	}
+
+	return huh.NewForm(
+		arr...,
 	).
 		WithWidth(45).
 		WithShowHelp(false).
@@ -62,7 +63,7 @@ func codingMenuUpdate(m *Model, msg tea.Msg) ([]tea.Cmd, error) {
 	return cmds, nil
 }
 
-func codingMenuView(m *Model, s *Styles) string {
+func codingMenuView(m *Model) string {
 	v := strings.TrimSuffix(m.codingMenu.View(), "\n\n")
 	form := m.lg.NewStyle().Margin(1, 0).Render(v)
 
@@ -82,5 +83,16 @@ func codingMenuView(m *Model, s *Styles) string {
 		footer = m.appErrorBoundaryView("")
 	}
 
-	return s.Base.Render(header + "\n" + body + "\n\n" + footer)
+	return lipgloss.Place(
+		termWidth,
+		termHeight,
+		lipgloss.Center,
+		lipgloss.Center,
+		lipgloss.JoinVertical(
+			lipgloss.Top,
+			header,
+			body,
+			footer,
+		),
+	)
 }
