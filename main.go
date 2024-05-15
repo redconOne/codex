@@ -2,8 +2,11 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
+	"syscall"
+	"unsafe"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
@@ -13,9 +16,12 @@ import (
 const maxWidth = 80
 
 var (
-	red    = lipgloss.AdaptiveColor{Light: "#FE5F86", Dark: "#FE5F86"}
-	indigo = lipgloss.AdaptiveColor{Light: "#5A56E0", Dark: "#7571F9"}
-	green  = lipgloss.AdaptiveColor{Light: "#02BA84", Dark: "#02BF87"}
+	red                   = lipgloss.AdaptiveColor{Light: "#FE5F86", Dark: "#FE5F86"}
+	indigo                = lipgloss.AdaptiveColor{Light: "#5A56E0", Dark: "#7571F9"}
+	green                 = lipgloss.AdaptiveColor{Light: "#02BA84", Dark: "#02BF87"}
+	termWidth, termHeight = getTerminalSize()
+	marginLeft            = termWidth / 3
+	marginTop             = termHeight / 3
 )
 
 type Styles struct {
@@ -30,8 +36,10 @@ type Styles struct {
 
 func NewStyles(lg *lipgloss.Renderer) *Styles {
 	s := Styles{}
+
 	s.Base = lg.NewStyle().
-		Padding(1, 4, 0, 1)
+		Padding(1, 4, 0, 1).
+		Margin(marginTop, 0, 0, marginLeft)
 	s.HeaderText = lg.NewStyle().
 		Foreground(indigo).
 		Bold(true).
@@ -66,6 +74,20 @@ type Model struct {
 	width      int
 }
 
+func getTerminalSize() (width, height int) {
+	fd := uintptr(syscall.Stdout)
+
+	var dimensions [4]uint16
+	if _, _, errno := syscall.Syscall6(syscall.SYS_IOCTL, fd, uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(&dimensions)), 0, 0, 0); errno != 0 {
+		return 0, 0
+	}
+
+	width = int(dimensions[1])
+	height = int(dimensions[0])
+
+	return width, height
+}
+
 // TODO: add support for additional submenus (Testing, Stats, Options)
 func NewModel() Model {
 	m := Model{width: maxWidth}
@@ -73,55 +95,8 @@ func NewModel() Model {
 	m.styles = NewStyles(m.lg)
 	m.menuType = "mainMenu"
 
-	m.mainMenu = huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Key("mainChoice").
-				Options(huh.NewOptions("Start coding", "Test solution", "View stats", "Configure settings", "About Codex", "Exit")...).
-				Title("What would you like to do today?").
-				Description("Choose an operation please"),
-
-			huh.NewConfirm().
-				Key("done").
-				Title("All done?").
-				Validate(func(v bool) error {
-					if !v {
-						return fmt.Errorf("welp, finish up then")
-					}
-					return nil
-				}).
-				Affirmative("Yep").
-				Negative("Wait, no"),
-		),
-	).
-		WithWidth(45).
-		WithShowHelp(false).
-		WithShowErrors(false)
-
-	m.codingMenu = huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Key("problemType").
-				Options(huh.NewOptions("Array/Hashing", "Sliding Window", "Linked List", "Greedy", "Stack")...).
-				Title("What would you like to do today?").
-				Description("Choose an operation please"),
-
-			huh.NewConfirm().
-				Key("done").
-				Title("All done?").
-				Validate(func(v bool) error {
-					if !v {
-						return fmt.Errorf("welp, finish up then")
-					}
-					return nil
-				}).
-				Affirmative("Yep").
-				Negative("Wait, no"),
-		),
-	).
-		WithWidth(45).
-		WithShowHelp(false).
-		WithShowErrors(false)
+	m.mainMenu = mainMenu()
+	m.codingMenu = codingMenu()
 
 	return m
 }
@@ -142,36 +117,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmds []tea.Cmd
+	var err error
 
 	// TODO: add cases for additional submenus (Testing, Stats, Options)
 	switch m.menuType {
 	case "mainMenu":
-		form, cmd := m.mainMenu.Update(msg)
-		if f, ok := form.(*huh.Form); ok {
-			m.mainMenu = f
-			cmds = append(cmds, cmd)
-		}
-
-		if m.mainMenu.State == huh.StateCompleted {
-			mainChoice := m.mainMenu.GetString("mainChoice")
-			switch mainChoice {
-			case "Start coding":
-				m.menuType = "codingMenu"
-			default:
-				cmds = append(cmds, tea.Quit)
-			}
-		}
+		cmds, err = mainMenuUpdate(&m, msg)
 	case "codingMenu":
-		form, cmd := m.codingMenu.Update(msg)
-		if f, ok := form.(*huh.Form); ok {
-			m.codingMenu = f
-			cmds = append(cmds, cmd)
-		}
+		cmds, err = codingMenuUpdate(&m, msg)
+	}
 
-		if m.codingMenu.State == huh.StateCompleted {
-			m.menuType = "completed"
-			cmds = append(cmds, tea.Quit)
-		}
+	if err != nil {
+		log.Fatalf("error updating menu: %s", err)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -183,55 +140,22 @@ func (m Model) View() string {
 	// TODO: add cases for additional submenus (Testing, Stats, Options)
 	switch m.menuType {
 	case "codingMenu":
-		v := strings.TrimSuffix(m.codingMenu.View(), "\n\n")
-		form := m.lg.NewStyle().Margin(1, 0).Render(v)
-
-		errors := m.codingMenu.Errors()
-		header := m.appBoundaryView("Codex")
-		if len(errors) > 0 {
-			header = m.appErrorBoundaryView(m.errorView())
-		}
-		body := lipgloss.JoinHorizontal(lipgloss.Top, form)
-
-		defaultHelpCommands := m.codingMenu.Help().ShortHelpView(m.codingMenu.KeyBinds())
-		quitCommands := m.styles.Help.Render(" • esc to quit")
-		fullCommands := defaultHelpCommands + quitCommands
-
-		footer := m.appBoundaryView(fullCommands)
-		if len(errors) > 0 {
-			footer = m.appErrorBoundaryView("")
-		}
-
-		return s.Base.Render(header + "\n" + body + "\n\n" + footer)
-
+		return codingMenuView(&m)
 	case "mainMenu":
-		v := strings.TrimSuffix(m.mainMenu.View(), "\n\n")
-		form := m.lg.NewStyle().Margin(1, 0).Render(v)
-
-		errors := m.mainMenu.Errors()
-		header := m.appBoundaryView("Codex")
-		if len(errors) > 0 {
-			header = m.appErrorBoundaryView(m.errorView())
-		}
-		body := lipgloss.JoinHorizontal(lipgloss.Top, form)
-
-		defaultHelpCommands := m.mainMenu.Help().ShortHelpView(m.mainMenu.KeyBinds())
-		quitCommands := m.styles.Help.Render(" • esc to quit")
-		fullCommands := defaultHelpCommands + quitCommands
-
-		footer := m.appBoundaryView(fullCommands)
-		if len(errors) > 0 {
-			footer = m.appErrorBoundaryView("")
-		}
-
-		return s.Base.Render(header + "\n" + body + "\n\n" + footer)
-
-	default:
-		problemType := m.codingMenu.GetString("problemType")
-		problemType = s.Highlight.Render(problemType)
+		return mainMenuView(&m)
+	case "completed":
 		var b strings.Builder
-		fmt.Fprintf(&b, "You chose to work on: %s\n", problemType)
-		fmt.Fprintf(&b, "Please wait while templates are generated...")
+		fmt.Fprintf(&b, "Generating template for problem #%s\n\n", "1234")
+		fmt.Fprintf(&b, "Please standby...")
+		return s.Status.Margin(0, 1).Padding(1, 2).Width(48).Render(b.String()) + "\n\n"
+	case "exit":
+		var b strings.Builder
+		fmt.Fprintf(&b, "Thanks for using Codex!")
+		return s.Status.Margin(0, 1).Padding(1, 2).Width(48).Render(b.String()) + "\n\n"
+	default:
+		var b strings.Builder
+		fmt.Fprintf(&b, "This area is still under construction\n\n")
+		fmt.Fprintf(&b, "Content here soon...")
 		return s.Status.Margin(0, 1).Padding(1, 2).Width(48).Render(b.String()) + "\n\n"
 	}
 }
@@ -246,7 +170,7 @@ func (m Model) errorView() string {
 
 func (m Model) appBoundaryView(text string) string {
 	return lipgloss.PlaceHorizontal(
-		m.width,
+		m.width+marginLeft-1,
 		lipgloss.Left,
 		m.styles.HeaderText.Render(text),
 		lipgloss.WithWhitespaceChars("/"),
@@ -256,7 +180,7 @@ func (m Model) appBoundaryView(text string) string {
 
 func (m Model) appErrorBoundaryView(text string) string {
 	return lipgloss.PlaceHorizontal(
-		m.width,
+		m.width+marginLeft-1,
 		lipgloss.Left,
 		m.styles.ErrorHeaderText.Render(text),
 		lipgloss.WithWhitespaceChars("/"),
