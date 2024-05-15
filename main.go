@@ -140,9 +140,9 @@ func (m Model) View() string {
 	// TODO: add cases for additional submenus (Testing, Stats, Options)
 	switch m.menuType {
 	case "codingMenu":
-		return codingMenuView(&m, s)
+		return codingMenuView(&m)
 	case "mainMenu":
-		return mainMenuView(&m, s)
+		return mainMenuView(&m)
 	case "completed":
 		var b strings.Builder
 		fmt.Fprintf(&b, "Generating template for problem #%s\n\n", "1234")
@@ -170,7 +170,7 @@ func (m Model) errorView() string {
 
 func (m Model) appBoundaryView(text string) string {
 	return lipgloss.PlaceHorizontal(
-		m.width,
+		m.width+marginLeft-1,
 		lipgloss.Left,
 		m.styles.HeaderText.Render(text),
 		lipgloss.WithWhitespaceChars("/"),
@@ -180,7 +180,7 @@ func (m Model) appBoundaryView(text string) string {
 
 func (m Model) appErrorBoundaryView(text string) string {
 	return lipgloss.PlaceHorizontal(
-		m.width,
+		m.width+marginLeft-1,
 		lipgloss.Left,
 		m.styles.ErrorHeaderText.Render(text),
 		lipgloss.WithWhitespaceChars("/"),
