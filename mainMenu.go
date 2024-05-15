@@ -10,11 +10,19 @@ import (
 )
 
 func mainMenu() *huh.Form {
+	menuOptions := huh.NewOptions(
+		"Start coding",
+		"Test solution",
+		"View stats",
+		"Configure settings",
+		"About Codex",
+		"Exit",
+	)
 	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Key("mainChoice").
-				Options(huh.NewOptions("Start coding", "Test solution", "View stats", "Configure settings", "About Codex", "Exit")...).
+				Options(menuOptions...).
 				Title("What would you like to do today?").
 				Description("Choose an operation please"),
 		),
@@ -51,7 +59,7 @@ func mainMenuUpdate(m *Model, msg tea.Msg) ([]tea.Cmd, error) {
 	return cmds, nil
 }
 
-func mainMenuView(m *Model, s *Styles) string {
+func mainMenuView(m *Model) string {
 	v := strings.TrimSuffix(m.mainMenu.View(), "\n\n")
 	form := m.lg.NewStyle().Margin(1, 0).Render(v)
 
@@ -71,5 +79,16 @@ func mainMenuView(m *Model, s *Styles) string {
 		footer = m.appErrorBoundaryView("")
 	}
 
-	return s.Base.Render(header + "\n" + body + "\n\n" + footer)
+	return lipgloss.Place(
+		termWidth,
+		termHeight,
+		lipgloss.Center,
+		lipgloss.Center,
+		lipgloss.JoinVertical(
+			lipgloss.Top,
+			header,
+			body,
+			footer,
+		),
+	)
 }
